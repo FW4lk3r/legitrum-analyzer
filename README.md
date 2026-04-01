@@ -40,7 +40,7 @@ docker build -t legitrum/analyzer .
 Your Server                    Legitrum Server
 ┌─────────────────┐           ┌─────────────────┐
 │ Docker Container │    →     │ AI Evaluation    │
-│                  │  snippets │ (Anthropic API)  │
+│                  │  snippets │                  │
 │ Index files      │    ←     │                  │
 │ Extract snippets │  results  │ Store findings   │
 │ Send to Legitrum │          │ Generate reports │
