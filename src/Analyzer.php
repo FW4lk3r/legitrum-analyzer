@@ -119,7 +119,7 @@ class Analyzer
 
             // Extract complete functions/classes
             $snippets = [];
-            foreach (array_slice($relevantFiles, 0, 15) as $file) {
+            foreach ($relevantFiles as $file) {
                 $extracted = $this->extractor->extract(
                     $file['content'],
                     $file['path'],
