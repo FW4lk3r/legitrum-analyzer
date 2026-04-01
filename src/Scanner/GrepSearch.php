@@ -1,0 +1,46 @@
+<?php
+
+namespace Legitrum\Analyzer\Scanner;
+
+class GrepSearch
+{
+    public function findRelevantFiles(array $allFiles, array $patterns, string $projectPath): array
+    {
+        $relevant = [];
+
+        foreach ($allFiles as $fileInfo) {
+            $content = @file_get_contents($fileInfo['absolute_path']);
+            if ($content === false) {
+                continue;
+            }
+
+            // Sanitize UTF-8
+            $content = mb_convert_encoding($content, 'UTF-8', 'auto');
+            if (! mb_check_encoding($content, 'UTF-8')) {
+                $content = iconv('UTF-8', 'UTF-8//IGNORE', $content);
+            }
+
+            $score = 0;
+            $matchedPatterns = [];
+
+            foreach ($patterns as $pattern) {
+                if (stripos($content, $pattern) !== false) {
+                    $score++;
+                    $matchedPatterns[] = $pattern;
+                }
+            }
+
+            if ($score > 0) {
+                $relevant[] = array_merge($fileInfo, [
+                    'relevance_score' => $score,
+                    'matched_patterns' => $matchedPatterns,
+                    'content' => $content,
+                ]);
+            }
+        }
+
+        usort($relevant, fn ($a, $b) => $b['relevance_score'] - $a['relevance_score']);
+
+        return $relevant;
+    }
+}

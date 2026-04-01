@@ -1,0 +1,16 @@
+{
+    "name": "legitrum/analyzer",
+    "description": "Legitrum Compliance Analyzer — runs on client infrastructure",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": "^8.2",
+        "guzzlehttp/guzzle": "^7.8"
+    },
+    "autoload": {
+        "psr-4": {
+            "Legitrum\\Analyzer\\": "src/"
+        }
+    },
+    "minimum-stability": "stable"
+}
