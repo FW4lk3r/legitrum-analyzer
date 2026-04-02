@@ -1,0 +1,68 @@
+name: Monthly Compliance Audit
+
+on:
+  schedule:
+    - cron: '0 9 1 * *' # 1st of each month at 09:00 UTC
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: write
+  pull-requests: read
+  actions: read
+
+jobs:
+  audit-export:
+    name: Export Patch Audit Trail
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Export workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "date,workflow,status,trigger,commit" > compliance/patch_audit_log.csv
+
+          gh run list \
+            --workflow=dependency-audit.yml \
+            --limit=50 \
+            --json conclusion,event,displayTitle,createdAt \
+            --jq '.[] | [.createdAt, "dependency-audit", .conclusion, .event, .displayTitle] | @csv' \
+            >> compliance/patch_audit_log.csv
+
+      - name: Export Dependabot PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "" >> compliance/patch_audit_log.csv
+          echo "# Dependabot PRs" >> compliance/patch_audit_log.csv
+          echo "number,title,state,created,merged" >> compliance/patch_audit_log.csv
+
+          gh pr list \
+            --state=all \
+            --limit=50 \
+            --json number,title,state,createdAt,mergedAt \
+            --jq '.[] | select(.title | startswith("deps:") or startswith("Bump")) | [.number, .title, .state, .createdAt, (.mergedAt // "not merged")] | @csv' \
+            >> compliance/patch_audit_log.csv
+
+      - name: Run composer audit
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+
+      - name: Install and audit
+        run: |
+          composer install --no-dev --optimize-autoloader --quiet
+          echo "" >> compliance/patch_audit_log.csv
+          echo "# Composer Audit $(date -I)" >> compliance/patch_audit_log.csv
+          composer audit --format=plain >> compliance/patch_audit_log.csv 2>&1 || true
+
+      - name: Commit audit log
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add compliance/patch_audit_log.csv
+          git diff --cached --quiet || git commit -m "compliance: monthly patch audit $(date -I)"
+          git push

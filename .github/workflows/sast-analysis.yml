@@ -1,0 +1,49 @@
+name: SAST Analysis
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  phpstan:
+    name: PHPStan (Level 6)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --optimize-autoloader
+
+      - name: Run PHPStan
+        run: vendor/bin/phpstan analyse --error-format=github
+
+  tests:
+    name: PHPUnit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --optimize-autoloader
+
+      - name: Run tests
+        run: vendor/bin/phpunit --testdox

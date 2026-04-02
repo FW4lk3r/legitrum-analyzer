@@ -68,6 +68,15 @@ Or without Compose:
 docker build -t legitrum/analyzer .
 ```
 
+## Security
+
+- [SECURITY.md](SECURITY.md) — Security policy, vulnerability reporting, and input validation
+- [DEPENDENCY_SECURITY.md](DEPENDENCY_SECURITY.md) — Dependency audit process and SLAs
+- [PATCH_MANAGEMENT_POLICY.md](PATCH_MANAGEMENT_POLICY.md) — Vulnerability response SLAs and patch workflow
+- [docs/VULNERABILITY_MANAGEMENT_PROCESS.md](docs/VULNERABILITY_MANAGEMENT_PROCESS.md) — Detailed workflow, triage matrix, and metrics
+- [docs/ENCRYPTION_POLICY.md](docs/ENCRYPTION_POLICY.md) — TLS requirements
+- [docs/SERVER_VALIDATION_CONTRACT.md](docs/SERVER_VALIDATION_CONTRACT.md) — API contract
+
 ## Architecture
 
 ```

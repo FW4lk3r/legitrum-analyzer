@@ -94,6 +94,38 @@ class LegitruAuthClientTest extends TestCase
         new LegitruAuthClient('test-token', 'http://192.168.1.1:8000');
     }
 
+    // --- SSRF / Config Injection Tests ---
+
+    public function testRejectsEnvSuppliedMaliciousUrl(): void
+    {
+        // Simulate a config file injection where an attacker controls the URL
+        $injectedUrls = [
+            'http://169.254.169.254/latest/meta-data/',  // AWS metadata SSRF
+            'http://metadata.google.internal/',           // GCP metadata
+            'http://10.0.0.1:8080/admin',                 // Internal service
+            'https://evil.com@localhost/',                 // URL authority confusion
+            'http://0x7f000001:8000',                     // Hex-encoded 127.0.0.1
+            'http://[::1]:8000',                          // IPv6 localhost
+        ];
+
+        foreach ($injectedUrls as $url) {
+            try {
+                new LegitruAuthClient('token', $url);
+                $this->fail("Should have rejected URL: {$url}");
+            } catch (InvalidArgumentException $e) {
+                $this->assertTrue(true);
+            }
+        }
+    }
+
+    public function testRejectsSubdomainTakeover(): void
+    {
+        // Attacker registers a subdomain that looks legitimate
+        $this->expectException(InvalidArgumentException::class);
+
+        new LegitruAuthClient('token', 'https://legitrum.pt.attacker.com');
+    }
+
     // --- Auth Failure Logging Tests ---
 
     public function testAuthenticateFailureLogsToStderr(): void

@@ -58,7 +58,7 @@ class FileValidator
             return ValidationResult::pass();
         }
 
-        $hash = md5($path . filemtime($path));
+        $hash = hash('sha256', $path . filemtime($path));
         if (isset($this->cache[$hash])) {
             return $this->cache[$hash];
         }

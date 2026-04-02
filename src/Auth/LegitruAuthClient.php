@@ -10,6 +10,26 @@ use Legitrum\Analyzer\Logging\Logger;
 
 class LegitruAuthClient
 {
+    /**
+     * Allowed server URL patterns.
+     *
+     * Local entries (localhost, 127.0.0.1, host.docker.internal) exist because
+     * this analyzer runs inside Docker containers that communicate with the
+     * host-running Legitrum server during development/staging. HTTP is permitted
+     * only for these local addresses — non-local servers must use HTTPS.
+     *
+     * SSRF mitigation: the analyzer is a CLI tool with no inbound HTTP surface.
+     * It only calls these endpoints outbound with a bearer token. The allowlist
+     * prevents a compromised LEGITRUM_SERVER env var from directing requests to
+     * arbitrary internal services.
+     *
+     * DNS rebinding: localhost/127.0.0.1 are resolved by the container's own
+     * resolver, not by external DNS, so rebinding is not a vector here.
+     * host.docker.internal is resolved by Docker's built-in DNS.
+     *
+     * Production: migrate this to an externally-managed config store
+     * (e.g., HashiCorp Vault) with read-only application access.
+     */
     private const ALLOWED_SERVERS = [
         'https://localhost',
         'https://localhost:*',
@@ -57,6 +77,13 @@ class LegitruAuthClient
         ]);
     }
 
+    /**
+     * Authenticate with the Legitrum server.
+     *
+     * Server validates: token is valid and not expired, assessment_id exists
+     * and is active, and the token owner has permission to analyze it.
+     * Returns assessment metadata on success (criteria count, title, etc.).
+     */
     public function authenticate(int $assessmentId): array
     {
         try {
@@ -64,7 +91,17 @@ class LegitruAuthClient
                 'json' => ['assessment_id' => $assessmentId],
             ]);
 
-            return json_decode($response->getBody()->getContents(), true);
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            if (! is_array($data)) {
+                $this->logger->error('Authentication response is not valid JSON', [
+                    'assessment_id' => $assessmentId,
+                    'raw_type' => gettype($data),
+                ]);
+                throw new \RuntimeException('Authentication failed: invalid response from server');
+            }
+
+            return $data;
         } catch (ClientException $e) {
             $status = $e->getResponse()->getStatusCode();
             $body = $e->getResponse()->getBody()->getContents();
@@ -93,15 +130,34 @@ class LegitruAuthClient
         }
     }
 
+    /**
+     * Fetch criteria for analysis.
+     *
+     * Server validates: assessment is authenticated in current session,
+     * returns criteria with search_patterns for each. Returns 404 if
+     * assessment doesn't exist, 403 if not authorized.
+     */
     public function getCriteria(int $assessmentId): array
     {
         $response = $this->client->get("/api/analyzer/criteria/{$assessmentId}");
+        $data = json_decode($response->getBody()->getContents(), true);
 
-        return json_decode($response->getBody()->getContents(), true);
+        if (! is_array($data)) {
+            $this->logger->error('Criteria response is not valid JSON', [
+                'assessment_id' => $assessmentId,
+            ]);
+            throw new \RuntimeException('Failed to fetch criteria: invalid response from server');
+        }
+
+        return $data;
     }
 
     /**
      * Send evidence for a criterion, chunked if needed.
+     *
+     * Server validates: assessment is authenticated, criterion_id belongs to
+     * the assessment, payload is well-formed, enforces rate limits, and
+     * persists only authorized submissions.
      */
     public function reportEvidence(
         int $assessmentId,
@@ -240,8 +296,21 @@ class LegitruAuthClient
         }
 
         if (! $this->isAllowedServer($server)) {
+            $this->logger->error('Server URL rejected by allowlist', [
+                'event' => 'url_validation_rejected',
+                'server' => $server,
+                'host' => $parsed['host'],
+                'scheme' => $parsed['scheme'],
+            ]);
             throw new InvalidArgumentException("Server not in allowlist: {$server}");
         }
+
+        $this->logger->info('Server URL validated', [
+            'event' => 'url_validation_passed',
+            'host' => $parsed['host'],
+            'scheme' => $parsed['scheme'],
+            'is_local' => $this->isLocalServer($server),
+        ]);
 
         if ($parsed['scheme'] === 'http' && ! $this->isLocalServer($server)) {
             $this->logger->warn('Using unencrypted HTTP for non-local server', [

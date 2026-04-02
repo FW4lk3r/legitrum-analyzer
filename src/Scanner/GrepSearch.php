@@ -8,6 +8,11 @@ use Legitrum\Analyzer\Security\FileValidator;
 
 class GrepSearch
 {
+    private const ALLOWED_BASE_DIRS = [
+        '/repo',        // Docker mount point
+        '/tmp',         // Testing
+    ];
+
     private ?FileValidator $validator = null;
 
     private Logger $logger;
@@ -27,6 +32,19 @@ class GrepSearch
         $basePath = realpath($projectPath);
         if ($basePath === false || ! is_dir($basePath) || ! is_readable($basePath)) {
             throw new InvalidArgumentException("Project path is not a valid readable directory: {$projectPath}");
+        }
+
+        // Verify project path is under an allowed base directory
+        $normalizedBase = str_replace('\\', '/', $basePath);
+        $isAllowed = false;
+        foreach (self::ALLOWED_BASE_DIRS as $allowed) {
+            if (str_starts_with($normalizedBase, $allowed)) {
+                $isAllowed = true;
+                break;
+            }
+        }
+        if (! $isAllowed) {
+            throw new InvalidArgumentException("Project path is outside allowed base directories: {$projectPath}");
         }
 
         $sanitizedPatterns = $this->sanitizePatterns($patterns);
@@ -115,9 +133,16 @@ class GrepSearch
     /**
      * @return string|false
      */
+    private bool $validatorWarningLogged = false;
+
     private function validateAndReadFile(string $path): string|false
     {
-        if ($this->validator !== null) {
+        if ($this->validator === null) {
+            if (! $this->validatorWarningLogged) {
+                $this->logger->warn('FileValidator not set — files are not being validated');
+                $this->validatorWarningLogged = true;
+            }
+        } else {
             $result = $this->validator->validate($path);
             if ($result->rejected) {
                 return false;

@@ -63,6 +63,37 @@ class LoggerTest extends TestCase
         $this->assertSame('[REDACTED]', $entry['context']['config']['secret_key']);
     }
 
+    public function testRedactsPiiFields(): void
+    {
+        $output = $this->captureOutput(function () {
+            $logger = new Logger('info');
+            $logger->info('User data', [
+                'username' => 'john',
+                'ssn' => '123-45-6789',
+                'credit_card' => '4111111111111111',
+                'cvv' => '123',
+                'national_id' => 'PT123456',
+                'passport' => 'AB123456',
+                'bank_account' => 'PT50000201231234567890154',
+                'health_data' => 'diagnosis xyz',
+                'medical_record' => 'record-123',
+            ]);
+        });
+
+        $entry = json_decode($output, true);
+        $ctx = $entry['context'];
+
+        $this->assertSame('john', $ctx['username']);
+        $this->assertSame('[REDACTED]', $ctx['ssn']);
+        $this->assertSame('[REDACTED]', $ctx['credit_card']);
+        $this->assertSame('[REDACTED]', $ctx['cvv']);
+        $this->assertSame('[REDACTED]', $ctx['national_id']);
+        $this->assertSame('[REDACTED]', $ctx['passport']);
+        $this->assertSame('[REDACTED]', $ctx['bank_account']);
+        $this->assertSame('[REDACTED]', $ctx['health_data']);
+        $this->assertSame('[REDACTED]', $ctx['medical_record']);
+    }
+
     public function testRespectsLogLevel(): void
     {
         $output = $this->captureOutput(function () {

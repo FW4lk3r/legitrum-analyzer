@@ -4,6 +4,7 @@ namespace Legitrum\Analyzer\Tests\Scanner;
 
 use InvalidArgumentException;
 use Legitrum\Analyzer\Scanner\GrepSearch;
+use Legitrum\Analyzer\Security\FileValidator;
 use PHPUnit\Framework\TestCase;
 
 class GrepSearchTest extends TestCase
@@ -110,6 +111,82 @@ class GrepSearchTest extends TestCase
 
         $this->assertCount(1, $result);
         $this->assertSame(['match'], $result[0]['matched_patterns']);
+    }
+
+    public function testRejectsEtcPasswdTraversal(): void
+    {
+        file_put_contents($this->fixtureDir . DIRECTORY_SEPARATOR . 'app.php', '<?php echo "safe";');
+
+        $files = [
+            [
+                'absolute_path' => $this->fixtureDir . DIRECTORY_SEPARATOR . '../../../../../../etc/passwd',
+                'path' => '../../../../../../etc/passwd',
+                'lines' => 1,
+            ],
+            [
+                'absolute_path' => $this->fixtureDir . DIRECTORY_SEPARATOR . 'app.php',
+                'path' => 'app.php',
+                'lines' => 1,
+            ],
+        ];
+
+        $result = $this->grep->findRelevantFiles($files, ['safe'], $this->fixtureDir);
+
+        $paths = array_column($result, 'path');
+        $this->assertNotContains('../../../../../../etc/passwd', $paths);
+    }
+
+    public function testRejectsBinaryPolyglotFiles(): void
+    {
+        // Create a .php file that starts with a ZIP header (polyglot)
+        $polyglotPath = $this->fixtureDir . DIRECTORY_SEPARATOR . 'malicious.php';
+        file_put_contents($polyglotPath, "\x50\x4B\x03\x04" . '<?php echo "hidden";');
+
+        // Create a legit PHP file
+        file_put_contents($this->fixtureDir . DIRECTORY_SEPARATOR . 'legit.php', '<?php echo "visible";');
+
+        $grep = new GrepSearch();
+        $grep->setValidator(new FileValidator());
+
+        $files = [
+            [
+                'absolute_path' => $polyglotPath,
+                'path' => 'malicious.php',
+                'lines' => 1,
+            ],
+            [
+                'absolute_path' => $this->fixtureDir . DIRECTORY_SEPARATOR . 'legit.php',
+                'path' => 'legit.php',
+                'lines' => 1,
+            ],
+        ];
+
+        $result = $grep->findRelevantFiles($files, ['echo'], $this->fixtureDir);
+
+        $paths = array_column($result, 'path');
+        $this->assertNotContains('malicious.php', $paths, 'Polyglot file should be rejected by FileValidator');
+        $this->assertContains('legit.php', $paths);
+    }
+
+    public function testRejectsNonIntegerPatterns(): void
+    {
+        file_put_contents($this->fixtureDir . DIRECTORY_SEPARATOR . 'app.php', '<?php echo "test";');
+
+        $files = [
+            [
+                'absolute_path' => $this->fixtureDir . DIRECTORY_SEPARATOR . 'app.php',
+                'path' => 'app.php',
+                'lines' => 1,
+            ],
+        ];
+
+        // Non-string patterns should be filtered
+        $patterns = [123, null, true, 'test'];
+
+        $result = $this->grep->findRelevantFiles($files, $patterns, $this->fixtureDir);
+
+        $this->assertCount(1, $result);
+        $this->assertSame(['test'], $result[0]['matched_patterns']);
     }
 
     public function testNormalOperationUnchanged(): void

@@ -9,6 +9,8 @@ class Logger
     private const SENSITIVE_KEYS = [
         'password', 'token', 'secret', 'authorization', 'cookie',
         'api_key', 'apikey', 'credential', 'private_key',
+        'ssn', 'credit_card', 'cvv', 'national_id', 'passport',
+        'bank_account', 'health_data', 'medical',
     ];
 
     private int $minLevel;
@@ -24,7 +26,15 @@ class Logger
     public function __construct(
         string $level = 'info',
         string $service = 'legitrum-analyzer',
+        ?string $appEnv = null,
     ) {
+        $appEnv = $appEnv ?? (getenv('APP_ENV') ?: 'development');
+
+        // Enforce minimum 'info' level in production
+        if ($appEnv === 'production' && $level === 'debug') {
+            $level = 'info';
+        }
+
         $this->minLevel = self::LEVELS[$level] ?? self::LEVELS['info'];
         $this->service = $service;
         $this->output = defined('STDOUT') ? STDOUT : fopen('php://stdout', 'w');
