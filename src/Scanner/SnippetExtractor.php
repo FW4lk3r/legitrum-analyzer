@@ -21,7 +21,7 @@ class SnippetExtractor
 
                 $snippet = implode("\n", array_slice($lines, $blockStart, $blockEnd - $blockStart + 1));
 
-                $hash = md5($snippet);
+                $hash = hash('sha256', $snippet);
                 if (isset($snippets[$hash])) {
                     continue;
                 }

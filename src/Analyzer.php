@@ -8,6 +8,7 @@ use Legitrum\Analyzer\Reporter\FindingsReporter;
 use Legitrum\Analyzer\Scanner\FileIndexer;
 use Legitrum\Analyzer\Scanner\GrepSearch;
 use Legitrum\Analyzer\Scanner\SnippetExtractor;
+use Legitrum\Analyzer\Logging\Logger;
 use Legitrum\Analyzer\Security\FileValidator;
 
 class Analyzer
@@ -26,6 +27,8 @@ class Analyzer
 
     private FileValidator $fileValidator;
 
+    private Logger $logger;
+
     private float $startTime;
 
     public function __construct(
@@ -35,9 +38,10 @@ class Analyzer
         private string $projectPath,
         private string $logLevel = 'info',
     ) {
-        $this->auth = new LegitruAuthClient($token, $server);
+        $this->logger = new Logger($logLevel);
+        $this->auth = new LegitruAuthClient($token, $server, $this->logger);
         $this->indexer = new FileIndexer();
-        $this->grep = new GrepSearch();
+        $this->grep = new GrepSearch($this->logger);
         $this->extractor = new SnippetExtractor();
         $this->chunker = new ContentChunker();
         $this->reporter = new FindingsReporter();
@@ -76,7 +80,31 @@ class Analyzer
             'status' => 'indexing_complete',
         ]);
 
-        // 3. Get criteria from Legitrum (returns search_patterns per criterion)
+        // 3. Collect and send SBOM data
+        $sbomFiles = [
+            'composer.lock',
+            'package-lock.json',
+            'yarn.lock',
+            'requirements.txt',
+            'Pipfile.lock',
+            'Gemfile.lock',
+            'go.sum',
+        ];
+
+        $found = [];
+        foreach ($sbomFiles as $file) {
+            $path = $this->projectPath . DIRECTORY_SEPARATOR . $file;
+            if (file_exists($path)) {
+                $found[$file] = file_get_contents($path);
+                $this->log("SBOM: encontrado {$file}");
+            }
+        }
+
+        if (! empty($found)) {
+            $this->auth->reportSbomFiles((int) $this->assessmentId, $found);
+        }
+
+        // 4. Get criteria from Legitrum (returns search_patterns per criterion)
         $this->log('A obter criterios...');
         $criteria = $this->auth->getCriteria((int) $this->assessmentId);
         $this->log(sprintf('A avaliar %d criterios', count($criteria)));
@@ -87,7 +115,7 @@ class Analyzer
             return;
         }
 
-        // 4. Process each criterion
+        // 5. Process each criterion
         foreach ($criteria as $index => $criterion) {
             $num = $index + 1;
             $title = $criterion['title'] ?? 'Unknown';
@@ -172,7 +200,7 @@ class Analyzer
             usleep(1500000);
         }
 
-        // 5. Validation summary
+        // 6. Validation summary
         $validationSummary = $this->fileValidator->getSummary();
         if ($validationSummary['rejected'] > 0 || $validationSummary['warnings'] > 0) {
             $this->log(sprintf(
@@ -183,7 +211,7 @@ class Analyzer
             ));
         }
 
-        // 6. Signal completion
+        // 7. Signal completion
         $duration = microtime(true) - $this->startTime;
 
         $this->auth->reportComplete((int) $this->assessmentId, [
@@ -196,16 +224,13 @@ class Analyzer
         $this->log("Ver resultados em: {$this->server}/assessments/{$this->assessmentId}");
     }
 
-    private function log(string $message): void
+    private function log(string $message, array $context = []): void
     {
-        $timestamp = date('H:i:s');
-        echo "[{$timestamp}] {$message}\n";
+        $this->logger->info($message, $context);
     }
 
-    private function debug(string $message): void
+    private function debug(string $message, array $context = []): void
     {
-        if ($this->logLevel === 'debug') {
-            $this->log($message);
-        }
+        $this->logger->debug($message, $context);
     }
 }

@@ -1,13 +1,11 @@
-version: '3.8'
-
 services:
   analyzer:
     build: .
     image: legitrum/analyzer:latest
+    env_file:
+      - .env.secrets
     environment:
-      - LEGITRUM_TOKEN=${LEGITRUM_TOKEN}
       - LEGITRUM_SERVER=${LEGITRUM_SERVER:-https://legitrum.com}
-      - ASSESSMENT_ID=${ASSESSMENT_ID}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - ${PROJECT_PATH:-.}:/repo:ro

@@ -1,3 +1,11 @@
 vendor/
-.env
 composer.lock
+
+# Secrets
+.env
+.env.local
+.env.*.local
+.env.secrets
+
+# IDE / tooling
+.claude/

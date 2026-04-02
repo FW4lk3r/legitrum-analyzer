@@ -4,11 +4,14 @@ require __DIR__ . '/vendor/autoload.php';
 
 use Legitrum\Analyzer\Analyzer;
 
-$token = getenv('LEGITRUM_TOKEN') ?: die("ERROR: LEGITRUM_TOKEN not set\n");
-$server = getenv('LEGITRUM_SERVER') ?: 'https://legitrum.com';
-$assessmentId = getenv('ASSESSMENT_ID') ?: die("ERROR: ASSESSMENT_ID not set\n");
+// Load secrets via centralized config
+$config = require __DIR__ . '/secrets/config.php';
+
+$token = $config['LEGITRUM_TOKEN'];
+$server = $config['LEGITRUM_SERVER'];
+$assessmentId = $config['ASSESSMENT_ID'];
 $projectPath = '/repo';
-$logLevel = getenv('LOG_LEVEL') ?: 'info';
+$logLevel = $config['LOG_LEVEL'];
 
 if (! is_dir($projectPath)) {
     die("ERROR: /repo not mounted. Use: docker run -v /path/to/project:/repo:ro\n");
