@@ -2,14 +2,23 @@
 
 namespace Legitrum\Analyzer\Scanner;
 
+use Legitrum\Analyzer\Security\FileValidator;
+
 class GrepSearch
 {
+    private ?FileValidator $validator = null;
+
+    public function setValidator(FileValidator $validator): void
+    {
+        $this->validator = $validator;
+    }
+
     public function findRelevantFiles(array $allFiles, array $patterns, string $projectPath): array
     {
         $relevant = [];
 
         foreach ($allFiles as $fileInfo) {
-            $content = @file_get_contents($fileInfo['absolute_path']);
+            $content = $this->validateAndReadFile($fileInfo['absolute_path']);
             if ($content === false) {
                 continue;
             }
@@ -42,5 +51,20 @@ class GrepSearch
         usort($relevant, fn ($a, $b) => $b['relevance_score'] - $a['relevance_score']);
 
         return $relevant;
+    }
+
+    /**
+     * @return string|false
+     */
+    private function validateAndReadFile(string $path): string|false
+    {
+        if ($this->validator !== null) {
+            $result = $this->validator->validate($path);
+            if ($result->rejected) {
+                return false;
+            }
+        }
+
+        return @file_get_contents($path);
     }
 }

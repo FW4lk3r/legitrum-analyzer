@@ -8,6 +8,7 @@ use Legitrum\Analyzer\Reporter\FindingsReporter;
 use Legitrum\Analyzer\Scanner\FileIndexer;
 use Legitrum\Analyzer\Scanner\GrepSearch;
 use Legitrum\Analyzer\Scanner\SnippetExtractor;
+use Legitrum\Analyzer\Security\FileValidator;
 
 class Analyzer
 {
@@ -22,6 +23,8 @@ class Analyzer
     private ContentChunker $chunker;
 
     private FindingsReporter $reporter;
+
+    private FileValidator $fileValidator;
 
     private float $startTime;
 
@@ -38,6 +41,8 @@ class Analyzer
         $this->extractor = new SnippetExtractor();
         $this->chunker = new ContentChunker();
         $this->reporter = new FindingsReporter();
+        $this->fileValidator = new FileValidator();
+        $this->grep->setValidator($this->fileValidator);
         $this->startTime = microtime(true);
     }
 
@@ -158,16 +163,27 @@ class Analyzer
 
                     // Small delay between chunks
                     if ($chunkIndex < $chunksTotal - 1) {
-                        usleep(200000);
+                        usleep(500000);
                     }
                 }
             }
 
-            // Rate limit: 0.5s between criteria
-            usleep(500000);
+            // Rate limit: 1.5s between criteria
+            usleep(1500000);
         }
 
-        // 5. Signal completion
+        // 5. Validation summary
+        $validationSummary = $this->fileValidator->getSummary();
+        if ($validationSummary['rejected'] > 0 || $validationSummary['warnings'] > 0) {
+            $this->log(sprintf(
+                'Validacao: %d ficheiros validados, %d rejeitados, %d avisos',
+                $validationSummary['files_validated'],
+                $validationSummary['rejected'],
+                $validationSummary['warnings'],
+            ));
+        }
+
+        // 6. Signal completion
         $duration = microtime(true) - $this->startTime;
 
         $this->auth->reportComplete((int) $this->assessmentId, [
