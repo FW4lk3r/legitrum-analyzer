@@ -11,6 +11,14 @@ Docker-based compliance analyzer that runs on your infrastructure. Your source c
 
 ## Usage
 
+### Option 1: Environment variables (quick)
+
+```bash
+LEGITRUM_TOKEN=your-token ASSESSMENT_ID=your-assessment-id docker compose up
+```
+
+Or with `docker run` directly:
+
 ```bash
 docker run \
   -e LEGITRUM_TOKEN=your-token \
@@ -18,6 +26,24 @@ docker run \
   -v /path/to/your/project:/repo:ro \
   legitrum/analyzer:latest
 ```
+
+### Option 2: Secrets file (recommended)
+
+Create a `.env.secrets` file from the example:
+
+```bash
+cp .env.example .env.secrets
+```
+
+Fill in your token and assessment ID, then run:
+
+```bash
+docker compose up
+```
+
+The `.env.secrets` file is gitignored and will never be committed.
+
+Both methods work simultaneously — if `.env.secrets` exists it's loaded automatically, and any environment variables you pass will override it.
 
 ## Environment Variables
 
@@ -27,8 +53,16 @@ docker run \
 | `ASSESSMENT_ID` | Yes | — | Assessment ID from Legitrum |
 | `LEGITRUM_SERVER` | No | `https://legitrum.com` | Legitrum server URL |
 | `LOG_LEVEL` | No | `info` | `info` or `debug` |
+| `PROJECT_PATH` | No | `.` | Path to project (docker compose only) |
+| `ENABLE_STRICT_VALIDATION` | No | `true` | File validation (magic bytes, entropy) |
 
 ## Build
+
+```bash
+docker compose build
+```
+
+Or without Compose:
 
 ```bash
 docker build -t legitrum/analyzer .
