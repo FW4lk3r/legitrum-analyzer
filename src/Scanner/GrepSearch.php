@@ -107,7 +107,7 @@ class GrepSearch
     }
 
     /**
-     * @param array<string> $patterns
+     * @param array<mixed> $patterns
      * @return array<string>
      */
     private function sanitizePatterns(array $patterns): array

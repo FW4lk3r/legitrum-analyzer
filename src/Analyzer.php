@@ -32,11 +32,11 @@ class Analyzer
     private float $startTime;
 
     public function __construct(
-        private string $token,
+        string $token,
         private string $server,
         private string $assessmentId,
         private string $projectPath,
-        private string $logLevel = 'info',
+        string $logLevel = 'info',
     ) {
         $this->logger = new Logger($logLevel);
         $this->auth = new LegitruAuthClient($token, $server, $this->logger);

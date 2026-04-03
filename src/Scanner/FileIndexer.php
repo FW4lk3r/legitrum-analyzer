@@ -61,8 +61,8 @@ class FileIndexer
                 }
             }
 
-            // Skip production paths in non-production environments
-            if ($this->isProductionPath($path) && $environment !== 'production') {
+            // Skip production paths (production environment is not allowed)
+            if ($this->isProductionPath($path)) {
                 continue;
             }
 
