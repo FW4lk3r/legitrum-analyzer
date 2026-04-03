@@ -55,6 +55,28 @@ Both methods work simultaneously — if `.env.secrets` exists it's loaded automa
 | `LOG_LEVEL` | No | `info` | `info` or `debug` |
 | `PROJECT_PATH` | No | `.` | Path to project (docker compose only) |
 | `ENABLE_STRICT_VALIDATION` | No | `true` | File validation (magic bytes, entropy) |
+| `LOG_DESTINATION` | No | `stderr` | Log output: `stderr` or a file path |
+| `APP_ENV` | No | `development` | `development`, `staging`, or `production` (blocked) |
+
+### Persistent Logging
+
+To write logs to a file instead of stderr:
+
+```bash
+docker run \
+  -e LOG_DESTINATION=/var/log/legitrum/analyzer.log \
+  -v /var/log/legitrum:/var/log/legitrum \
+  ...
+```
+
+Log files are created with `0640` permissions (owner read/write, group read). The directory is created automatically with `0750` permissions if it doesn't exist.
+
+For log aggregation, use Docker's native log drivers instead:
+
+```bash
+docker run --log-driver=fluentd ...
+docker run --log-driver=awslogs ...
+```
 
 ## Build
 

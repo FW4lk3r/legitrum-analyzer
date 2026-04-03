@@ -33,6 +33,7 @@ class Logger
         ?string $appEnv = null,
         $output = null,
         $errorOutput = null,
+        ?string $logDestination = null,
     ) {
         $appEnv = $appEnv ?? (getenv('APP_ENV') ?: 'development');
 
@@ -43,8 +44,26 @@ class Logger
 
         $this->minLevel = self::LEVELS[$level] ?? self::LEVELS['info'];
         $this->service = $service;
-        $this->output = $output ?? (defined('STDOUT') ? STDOUT : fopen('php://stdout', 'w'));
-        $this->errorOutput = $errorOutput ?? (defined('STDERR') ? STDERR : fopen('php://stderr', 'w'));
+
+        // If explicit streams provided (testing), use those
+        if ($output !== null || $errorOutput !== null) {
+            $this->output = $output ?? fopen('php://stdout', 'w');
+            $this->errorOutput = $errorOutput ?? fopen('php://stderr', 'w');
+
+            return;
+        }
+
+        // Resolve log destination from parameter or environment
+        $destination = $logDestination ?? (getenv('LOG_DESTINATION') ?: 'stderr');
+
+        if ($destination === 'stderr' || $destination === '') {
+            $this->output = defined('STDOUT') ? STDOUT : fopen('php://stdout', 'w');
+            $this->errorOutput = defined('STDERR') ? STDERR : fopen('php://stderr', 'w');
+        } else {
+            $stream = self::openLogFile($destination);
+            $this->output = $stream;
+            $this->errorOutput = $stream;
+        }
     }
 
     public function debug(string $message, array $context = []): void
@@ -88,6 +107,29 @@ class Logger
 
         $stream = in_array($level, ['warn', 'error']) ? $this->errorOutput : $this->output;
         fwrite($stream, $line);
+    }
+
+    /**
+     * @return resource
+     */
+    private static function openLogFile(string $path)
+    {
+        $dir = dirname($path);
+        if (! is_dir($dir)) {
+            mkdir($dir, 0750, true);
+        }
+
+        $stream = fopen($path, 'a');
+        if ($stream === false) {
+            fwrite(STDERR, "WARNING: Cannot open log file {$path}, falling back to stderr\n");
+
+            return defined('STDERR') ? STDERR : fopen('php://stderr', 'w');
+        }
+
+        // Restrict file permissions (owner read/write, group read)
+        chmod($path, 0640);
+
+        return $stream;
     }
 
     private function sanitize(array $data): array

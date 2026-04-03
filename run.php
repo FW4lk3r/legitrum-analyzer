@@ -15,9 +15,21 @@ $projectPath = '/repo';
 $logLevel = $config['LOG_LEVEL'];
 $appEnv = getenv('APP_ENV') ?: 'development';
 $isProduction = $appEnv === 'production';
+$logDestination = getenv('LOG_DESTINATION') ?: 'stderr';
+
+// Validate log destination is accessible before initializing
+if ($logDestination !== 'stderr') {
+    $logDir = dirname($logDestination);
+    if (! is_dir($logDir) && ! mkdir($logDir, 0750, true)) {
+        die("ERROR: Log directory is not writable: {$logDir}\n");
+    }
+    if (is_file($logDestination) && ! is_writable($logDestination)) {
+        die("ERROR: Log file is not writable: {$logDestination}\n");
+    }
+}
 
 // Register error/exception handlers before any user code
-$logger = new Logger($logLevel, 'legitrum-analyzer', $appEnv);
+$logger = new Logger($logLevel, 'legitrum-analyzer', $appEnv, logDestination: $logDestination);
 $registerHandlers = require __DIR__ . '/bootstrap/handlers.php';
 $registerHandlers($logger, $isProduction);
 
