@@ -9,3 +9,5 @@ composer.lock
 
 # IDE / tooling
 .claude/
+.phpunit.result.cache
+composer.phar
