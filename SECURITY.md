@@ -117,6 +117,62 @@ When `ENABLE_STRICT_VALIDATION=true` (default), files are validated before readi
 - `LEGITRUM_SERVER` — Must match the URL allowlist with `http` or `https` scheme
 - `/repo` path — Must exist and resolve to itself (no symlink tricks)
 
+## Access Control Model
+
+### Architecture Decision: No Application-Level RBAC
+
+This tool is a **single-purpose, stateless CLI** that runs inside a Docker container, executes one analysis, and exits. It has no users, no sessions, no multi-tenant data, and no persistent state.
+
+Traditional access control models (RBAC, ABAC) are not applicable because:
+
+- There is **one actor** (the process) performing **one action** (analyze) on **one resource** (the mounted codebase)
+- There is no identity provider or user authentication — the process inherits its authorization from whoever invoked `docker run`
+- The tool does not store, persist, or serve data to other consumers
+
+### How Access Is Controlled
+
+Access control is enforced at **infrastructure and protocol layers** rather than application-level RBAC:
+
+| Layer | Control | Implementation |
+|-------|---------|----------------|
+| **Authentication** | Bearer token | `LegitruAuthClient` sends token; **server** validates identity and permissions |
+| **Authorization** | Server-side | Server verifies token owner has access to the requested assessment |
+| **Secret protection** | Environment isolation | Token loaded from env vars only, never persisted to disk by the tool |
+| **Secret leakage prevention** | Log redaction | Logger auto-redacts 20+ sensitive key patterns from all output |
+| **Commit prevention** | Pre-commit hook | `scripts/pre-commit` blocks `.env.secrets` and exposed credentials |
+| **Git exclusion** | `.gitignore` | `.env.secrets`, `.env.local`, `.env.*.local` excluded |
+| **Environment restriction** | Runtime block | `run.php` exits if `APP_ENV=production` |
+| **Network restriction** | URL allowlist | `ALLOWED_SERVERS` constant limits outbound connections |
+| **Filesystem restriction** | Path whitelist | `GrepSearch` only reads from `/repo` (Docker mount) |
+| **Production path exclusion** | Path filtering | `FileIndexer` rejects paths containing production directories |
+
+### Confidential Data Pathways
+
+There is one confidential data pathway in this application:
+
+```
+Environment variable (LEGITRUM_TOKEN)
+  → secrets/config.php (validates non-empty, logs length only)
+    → run.php (passes to Analyzer constructor)
+      → LegitruAuthClient (sets Bearer header)
+        → HTTPS request to Legitrum server
+```
+
+The token is:
+- Never written to disk by the application
+- Never logged in full (only first 8 characters in error context)
+- Auto-redacted from any log context containing `token` in the key name
+- Transmitted only over HTTPS (TLS 1.2+) for non-local servers
+
+### Compliance Note
+
+For environments requiring A.8-level access controls, this tool's controls must be paired with **infrastructure-level enforcement**:
+
+- Docker socket access restricted to authorized CI/CD pipelines
+- Token generation and distribution via the Legitrum dashboard (not email/chat)
+- Quarterly token rotation (documented in `.env.example`)
+- Filesystem ACLs on the host restricting access to `.env.secrets`
+
 ## Credential Handling
 
 - Tokens are never logged in full — only the first 8 characters appear in error logs
