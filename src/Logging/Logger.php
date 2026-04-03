@@ -23,10 +23,16 @@ class Logger
     /** @var resource */
     private $errorOutput;
 
+    /**
+     * @param resource|null $output       Override stdout stream (for testing)
+     * @param resource|null $errorOutput  Override stderr stream (for testing)
+     */
     public function __construct(
         string $level = 'info',
         string $service = 'legitrum-analyzer',
         ?string $appEnv = null,
+        $output = null,
+        $errorOutput = null,
     ) {
         $appEnv = $appEnv ?? (getenv('APP_ENV') ?: 'development');
 
@@ -37,8 +43,8 @@ class Logger
 
         $this->minLevel = self::LEVELS[$level] ?? self::LEVELS['info'];
         $this->service = $service;
-        $this->output = defined('STDOUT') ? STDOUT : fopen('php://stdout', 'w');
-        $this->errorOutput = defined('STDERR') ? STDERR : fopen('php://stderr', 'w');
+        $this->output = $output ?? (defined('STDOUT') ? STDOUT : fopen('php://stdout', 'w'));
+        $this->errorOutput = $errorOutput ?? (defined('STDERR') ? STDERR : fopen('php://stderr', 'w'));
     }
 
     public function debug(string $message, array $context = []): void

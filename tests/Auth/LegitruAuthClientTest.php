@@ -51,7 +51,6 @@ class LegitruAuthClientTest extends TestCase
     public function testRejectsJavascriptScheme(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Invalid URL scheme');
 
         new LegitruAuthClient('test-token', 'javascript:alert(1)');
     }

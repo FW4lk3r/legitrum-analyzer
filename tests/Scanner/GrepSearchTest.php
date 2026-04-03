@@ -18,11 +18,16 @@ class GrepSearchTest extends TestCase
         $this->grep = new GrepSearch();
         $this->fixtureDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'grepsearch_test_' . uniqid();
         mkdir($this->fixtureDir, 0755, true);
+
+        // Allow system temp dir for testing on non-Linux systems
+        $normalizedTemp = str_replace('\\', '/', realpath(sys_get_temp_dir()));
+        GrepSearch::addAllowedBaseDir($normalizedTemp);
     }
 
     protected function tearDown(): void
     {
         $this->removeDir($this->fixtureDir);
+        GrepSearch::resetAllowedBaseDirs();
     }
 
     public function testRejectsInvalidProjectPath(): void

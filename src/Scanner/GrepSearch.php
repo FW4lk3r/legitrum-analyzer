@@ -10,8 +10,24 @@ class GrepSearch
 {
     private const ALLOWED_BASE_DIRS = [
         '/repo',        // Docker mount point
-        '/tmp',         // Testing
+        '/tmp',         // Testing (Linux)
     ];
+
+    /** @var list<string> */
+    private static array $extraAllowedDirs = [];
+
+    /**
+     * Allow additional base directories (for testing on non-Linux systems).
+     */
+    public static function addAllowedBaseDir(string $dir): void
+    {
+        self::$extraAllowedDirs[] = $dir;
+    }
+
+    public static function resetAllowedBaseDirs(): void
+    {
+        self::$extraAllowedDirs = [];
+    }
 
     private ?FileValidator $validator = null;
 
@@ -37,7 +53,8 @@ class GrepSearch
         // Verify project path is under an allowed base directory
         $normalizedBase = str_replace('\\', '/', $basePath);
         $isAllowed = false;
-        foreach (self::ALLOWED_BASE_DIRS as $allowed) {
+        $allDirs = array_merge(self::ALLOWED_BASE_DIRS, self::$extraAllowedDirs);
+        foreach ($allDirs as $allowed) {
             if (str_starts_with($normalizedBase, $allowed)) {
                 $isAllowed = true;
                 break;

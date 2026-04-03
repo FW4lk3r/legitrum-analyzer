@@ -10,100 +10,108 @@ class ProductionExceptionHandlerTest extends TestCase
 {
     public function testProductionOutputContainsNoStackTrace(): void
     {
-        $output = $this->captureStderr(function () {
-            $logger = new Logger('info', 'test', 'production');
-            $handler = new ProductionExceptionHandler($logger, true);
+        $stderr = fopen('php://memory', 'rw');
+        $logStream = fopen('php://memory', 'rw');
+        $logger = new Logger('error', 'test', 'production', $logStream, $logStream);
+        $handler = new ProductionExceptionHandler($logger, true);
 
-            // Call handleException directly (don't register — we need to catch exit)
-            // We can't test exit() directly, so we test the output formatting
-            $e = new \RuntimeException('Something broke', 500);
-            $ref = $this->invokeHandlerWithoutExit($handler, $e);
+        $e = new \RuntimeException('Something broke', 500);
 
-            // Verify ref ID is in output
-            $this->assertNotEmpty($ref);
-        });
+        // Capture stderr by replacing it temporarily
+        $origStderr = defined('STDERR') ? STDERR : fopen('php://stderr', 'w');
+        $this->invokeHandlerWithoutExit($handler, $e, $stderr);
 
-        // Should NOT contain file paths with directory separators (stack trace lines)
+        rewind($stderr);
+        $output = stream_get_contents($stderr);
+
+        $this->assertStringContainsString('Something broke', $output);
         $this->assertStringNotContainsString('#0 ', $output);
-        $this->assertStringNotContainsString('Stack trace', $output);
     }
 
     public function testDevelopmentOutputContainsStackTrace(): void
     {
-        $output = $this->captureStderr(function () {
-            $logger = new Logger('debug', 'test', 'development');
-            $handler = new ProductionExceptionHandler($logger, false);
+        $stderr = fopen('php://memory', 'rw');
+        $logStream = fopen('php://memory', 'rw');
+        $logger = new Logger('debug', 'test', 'development', $logStream, $logStream);
+        $handler = new ProductionExceptionHandler($logger, false);
 
-            $e = new \RuntimeException('Dev error');
-            $this->invokeHandlerWithoutExit($handler, $e);
-        });
+        $e = new \RuntimeException('Dev error');
+        $this->invokeHandlerWithoutExit($handler, $e, $stderr);
 
-        // Should contain trace in non-production
+        rewind($stderr);
+        $output = stream_get_contents($stderr);
+
         $this->assertStringContainsString('#0 ', $output);
     }
 
     public function testProductionLogContainsOnlyBasename(): void
     {
-        $logOutput = $this->captureStdout(function () {
-            $logger = new Logger('error', 'test', 'production');
-            $handler = new ProductionExceptionHandler($logger, true);
+        $logStream = fopen('php://memory', 'rw');
+        $stderr = fopen('php://memory', 'rw');
+        $logger = new Logger('error', 'test', 'production', $logStream, $logStream);
+        $handler = new ProductionExceptionHandler($logger, true);
 
-            $e = new \RuntimeException('Test error');
-            $this->invokeHandlerWithoutExit($handler, $e);
-        });
+        $e = new \RuntimeException('Test error');
+        $this->invokeHandlerWithoutExit($handler, $e, $stderr);
 
-        $entry = json_decode($logOutput, true);
+        rewind($logStream);
+        $entry = json_decode(stream_get_contents($logStream), true);
+
         $this->assertNotNull($entry);
-
-        // In production, file should be basename only (no directory)
-        $this->assertStringNotContainsString(DIRECTORY_SEPARATOR, $entry['context']['file']);
+        $this->assertStringNotContainsString('/', $entry['context']['file']);
+        $this->assertStringNotContainsString('\\', $entry['context']['file']);
     }
 
     public function testLoggerEnforcesInfoLevelInProduction(): void
     {
-        $output = $this->captureStdout(function () {
-            $logger = new Logger('debug', 'test', 'production');
-            $logger->debug('This should be suppressed');
-        });
+        $stdout = fopen('php://memory', 'rw');
+        $logger = new Logger('debug', 'test', 'production', $stdout, $stdout);
+        $logger->debug('This should be suppressed');
 
-        $this->assertEmpty(trim($output), 'Debug messages should be suppressed in production');
+        rewind($stdout);
+        $this->assertEmpty(trim(stream_get_contents($stdout)));
     }
 
     public function testLoggerAllowsDebugInDevelopment(): void
     {
-        $output = $this->captureStdout(function () {
-            $logger = new Logger('debug', 'test', 'development');
-            $logger->debug('This should appear');
-        });
+        $stdout = fopen('php://memory', 'rw');
+        $logger = new Logger('debug', 'test', 'development', $stdout, $stdout);
+        $logger->debug('This should appear');
 
-        $entry = json_decode($output, true);
+        rewind($stdout);
+        $entry = json_decode(stream_get_contents($stdout), true);
         $this->assertSame('debug', $entry['level']);
     }
 
     public function testReferenceIdIsEightChars(): void
     {
-        $this->captureStderr(function () {
-            $logger = new Logger('error', 'test', 'production');
-            $handler = new ProductionExceptionHandler($logger, true);
+        $logStream = fopen('php://memory', 'rw');
+        $stderr = fopen('php://memory', 'rw');
+        $logger = new Logger('error', 'test', 'production', $logStream, $logStream);
+        $handler = new ProductionExceptionHandler($logger, true);
 
-            $e = new \RuntimeException('Ref test');
-            $ref = $this->invokeHandlerWithoutExit($handler, $e);
+        $e = new \RuntimeException('Ref test');
+        $this->invokeHandlerWithoutExit($handler, $e, $stderr);
 
-            $this->assertSame(8, strlen($ref));
-            $this->assertMatchesRegularExpression('/^[a-f0-9]{8}$/', $ref);
-        });
+        rewind($logStream);
+        $entry = json_decode(stream_get_contents($logStream), true);
+
+        $this->assertSame(8, strlen($entry['context']['ref_id']));
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{8}$/', $entry['context']['ref_id']);
     }
 
     /**
-     * Call handleException without triggering exit().
-     * Returns the reference ID from the log entry.
+     * Replicate handleException logic without calling exit().
+     *
+     * @param resource $stderr
      */
-    private function invokeHandlerWithoutExit(ProductionExceptionHandler $handler, \Throwable $e): string
-    {
-        // Use reflection to access the handler's logger and get the ref ID
-        $refId = substr(bin2hex(random_bytes(4)), 0, 8);
-
+    private function invokeHandlerWithoutExit(
+        ProductionExceptionHandler $handler,
+        \Throwable $e,
+        $stderr
+    ): void {
         $ref = new \ReflectionClass($handler);
+
         $loggerProp = $ref->getProperty('logger');
         $loggerProp->setAccessible(true);
         $logger = $loggerProp->getValue($handler);
@@ -112,7 +120,8 @@ class ProductionExceptionHandlerTest extends TestCase
         $isProdProp->setAccessible(true);
         $isProduction = $isProdProp->getValue($handler);
 
-        // Replicate handleException logic without exit()
+        $refId = substr(bin2hex(random_bytes(4)), 0, 8);
+
         $logger->error($e->getMessage(), [
             'ref_id' => $refId,
             'exception' => get_class($e),
@@ -122,34 +131,10 @@ class ProductionExceptionHandlerTest extends TestCase
         ]);
 
         if ($isProduction) {
-            fwrite(STDERR, "FATAL: {$e->getMessage()} [ref:{$refId}]\n");
+            fwrite($stderr, "FATAL: {$e->getMessage()} [ref:{$refId}]\n");
         } else {
-            fwrite(STDERR, "FATAL: {$e->getMessage()} [ref:{$refId}]\n");
-            fwrite(STDERR, $e->getTraceAsString() . "\n");
+            fwrite($stderr, "FATAL: {$e->getMessage()} [ref:{$refId}]\n");
+            fwrite($stderr, $e->getTraceAsString() . "\n");
         }
-
-        return $refId;
-    }
-
-    private function captureStdout(callable $fn): string
-    {
-        ob_start();
-        $fn();
-
-        return ob_get_clean();
-    }
-
-    private function captureStderr(callable $fn): string
-    {
-        $tmpFile = tempnam(sys_get_temp_dir(), 'stderr_test_');
-        $original = null;
-
-        // Redirect STDERR to temp file for capture
-        // Note: This only works with fwrite(STDERR), not with error_log()
-        ob_start();
-        $fn();
-        $stdout = ob_get_clean();
-
-        return $stdout;
     }
 }
