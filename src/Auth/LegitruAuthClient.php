@@ -139,7 +139,22 @@ class LegitruAuthClient
      */
     public function getCriteria(int $assessmentId): array
     {
-        $response = $this->client->get("/api/analyzer/criteria/{$assessmentId}");
+        try {
+            $response = $this->client->get("/api/analyzer/criteria/{$assessmentId}");
+        } catch (ClientException $e) {
+            $status = $e->getResponse()->getStatusCode();
+            $reason = $this->extractFailureReason($status, $e->getResponse()->getBody()->getContents());
+
+            $this->logger->error('Authorization denied for criteria fetch', [
+                'event' => 'criteria_auth_rejected',
+                'assessment_id' => $assessmentId,
+                'http_status' => $status,
+                'reason' => $reason,
+            ]);
+
+            throw new \RuntimeException("Failed to fetch criteria (HTTP {$status}): {$reason}", $status, $e);
+        }
+
         $data = json_decode($response->getBody()->getContents(), true);
 
         if (! is_array($data)) {
