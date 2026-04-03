@@ -57,7 +57,7 @@ jobs:
           composer install --no-dev --optimize-autoloader --quiet
           echo "" >> compliance/patch_audit_log.csv
           echo "# Composer Audit $(date -I)" >> compliance/patch_audit_log.csv
-          composer audit --format=plain >> compliance/patch_audit_log.csv 2>&1 || true
+          composer audit --format=plain >> compliance/patch_audit_log.csv 2>&1
 
       - name: Commit audit log
         run: |

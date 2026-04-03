@@ -24,6 +24,7 @@
     },
     "scripts": {
         "audit": "composer audit --format=plain",
+        "audit:enforce": "composer audit && echo 'Audit passed — no known vulnerabilities'",
         "audit:json": "composer audit --format=json",
         "sbom": "composer CycloneDX:make-sbom --output-file=sbom.cdx.json --spec-version=1.5",
         "test": "phpunit --testdox",
