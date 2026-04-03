@@ -21,6 +21,12 @@ $logger = new Logger($logLevel, 'legitrum-analyzer', $appEnv);
 $registerHandlers = require __DIR__ . '/bootstrap/handlers.php';
 $registerHandlers($logger, $isProduction);
 
+// Block production usage — this tool is for development/staging only
+if ($isProduction) {
+    fwrite(STDERR, "ERROR: Analyzer is blocked in production. Set APP_ENV=development or APP_ENV=staging.\n");
+    exit(1);
+}
+
 // Validate assessment ID is numeric
 if (! ctype_digit((string) $assessmentId)) {
     die("ERROR: ASSESSMENT_ID must be a numeric value, got: {$assessmentId}\n");

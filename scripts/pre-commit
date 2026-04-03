@@ -1,0 +1,26 @@
+#!/bin/sh
+#
+# Pre-commit hook to prevent committing secrets.
+# Install: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+STAGED=$(git diff --cached --name-only)
+
+# Block .env.secrets
+if echo "$STAGED" | grep -q '\.env\.secrets'; then
+    echo "ERROR: .env.secrets is staged for commit. Remove it:"
+    echo "  git reset HEAD .env.secrets"
+    exit 1
+fi
+
+# Scan staged content for exposed secrets
+PATTERNS='LEGITRUM_TOKEN=.+|password=.+|api_key=.+|secret=.+|private_key=.+'
+MATCHES=$(git diff --cached -G "$PATTERNS" --name-only | grep -v '\.example$' | grep -v 'SECURITY\.md' | grep -v '\.md$')
+
+if [ -n "$MATCHES" ]; then
+    echo "ERROR: Possible secret detected in staged files:"
+    echo "$MATCHES"
+    echo ""
+    echo "If this is intentional (e.g., a config template), use:"
+    echo "  git commit --no-verify"
+    exit 1
+fi
