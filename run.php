@@ -37,14 +37,13 @@ if (! in_array($logLevel, ['info', 'debug'], true)) {
     die("ERROR: LOG_LEVEL must be 'info' or 'debug', got: {$logLevel}\n");
 }
 
-// Validate project path exists and is a real directory (no traversal)
-if (! is_dir($projectPath)) {
-    die("ERROR: /repo not mounted. Use: docker run -v /path/to/project:/repo:ro\n");
-}
-
+// Validate project path exists, is readable, and is within /repo
 $realProjectPath = realpath($projectPath);
-if ($realProjectPath === false || $realProjectPath !== $projectPath) {
-    die("ERROR: /repo path resolved unexpectedly to: {$realProjectPath}\n");
+if ($realProjectPath === false || ! is_dir($realProjectPath) || ! is_readable($realProjectPath)) {
+    die("ERROR: /repo not mounted or unreadable. Use: docker run -v /path/to/project:/repo:ro\n");
+}
+if (strpos($realProjectPath, '/repo') !== 0) {
+    die("ERROR: Project path must be within /repo, resolved to: {$realProjectPath}\n");
 }
 
 $analyzer = new Analyzer($token, $server, $assessmentId, $projectPath, $logLevel);

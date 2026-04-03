@@ -16,6 +16,7 @@ class GrepSearchTest extends TestCase
     protected function setUp(): void
     {
         $this->grep = new GrepSearch();
+        $this->grep->setValidator(new FileValidator());
         $this->fixtureDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'grepsearch_test_' . uniqid();
         mkdir($this->fixtureDir, 0755, true);
 

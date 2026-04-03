@@ -150,20 +150,15 @@ class GrepSearch
     /**
      * @return string|false
      */
-    private bool $validatorWarningLogged = false;
-
     private function validateAndReadFile(string $path): string|false
     {
         if ($this->validator === null) {
-            if (! $this->validatorWarningLogged) {
-                $this->logger->warn('FileValidator not set — files are not being validated');
-                $this->validatorWarningLogged = true;
-            }
-        } else {
-            $result = $this->validator->validate($path);
-            if ($result->rejected) {
-                return false;
-            }
+            throw new \RuntimeException('FileValidator must be set before reading files');
+        }
+
+        $result = $this->validator->validate($path);
+        if ($result->rejected) {
+            return false;
         }
 
         try {
