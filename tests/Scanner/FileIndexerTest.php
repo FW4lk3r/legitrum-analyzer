@@ -95,6 +95,45 @@ class FileIndexerTest extends TestCase
         $this->assertNotContains('deploy/prod/deploy.yaml', $paths);
     }
 
+    public function testRejectsProjectPathInsideProductionDir(): void
+    {
+        $prodDir = $this->fixtureDir . DIRECTORY_SEPARATOR . 'deploy' . DIRECTORY_SEPARATOR . 'production';
+        mkdir($prodDir, 0755, true);
+        file_put_contents($prodDir . DIRECTORY_SEPARATOR . 'app.php', '<?php echo 1;');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('production directory');
+
+        $this->indexer->index($prodDir);
+    }
+
+    public function testEnvVarBypassAttemptsFail(): void
+    {
+        // These env vars should have no effect on validation
+        putenv('SKIP_ENV_CHECK=1');
+        putenv('FORCE=1');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->indexer->index($this->fixtureDir, 'production');
+
+        putenv('SKIP_ENV_CHECK');
+        putenv('FORCE');
+    }
+
+    public function testCaseInsensitiveProductionPathDetection(): void
+    {
+        $prodDir = $this->fixtureDir . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'Production';
+        mkdir($prodDir, 0755, true);
+        file_put_contents($prodDir . DIRECTORY_SEPARATOR . 'db.php', '<?php return [];');
+
+        file_put_contents($this->fixtureDir . DIRECTORY_SEPARATOR . 'app.php', '<?php echo 1;');
+
+        $result = $this->indexer->index($this->fixtureDir);
+
+        $paths = array_column($result, 'path');
+        $this->assertNotContains('config/Production/db.php', $paths);
+    }
+
     public function testSkipsSecretsDirectory(): void
     {
         $secretsDir = $this->fixtureDir . DIRECTORY_SEPARATOR . 'secrets';

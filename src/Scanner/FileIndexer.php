@@ -38,6 +38,12 @@ class FileIndexer
             throw new InvalidArgumentException("Environment '{$environment}' is not allowed. Permitted: " . implode(', ', self::ALLOWED_ENVIRONMENTS));
         }
 
+        // Verify canonical path doesn't resolve into a production directory
+        $canonicalPath = realpath($projectPath);
+        if ($canonicalPath !== false && $this->isProductionPath($canonicalPath)) {
+            throw new InvalidArgumentException("Project path resolves to a production directory: {$canonicalPath}");
+        }
+
         $files = [];
         $projectPath = rtrim($projectPath, DIRECTORY_SEPARATOR);
 
@@ -120,13 +126,19 @@ class FileIndexer
 
     private function isProductionPath(string $path): bool
     {
-        $normalized = str_replace(DIRECTORY_SEPARATOR, '/', strtolower($path));
+        // Resolve symlinks to check the real path
+        $resolved = realpath($path);
+        $checkPath = $resolved !== false ? $resolved : $path;
+        $normalized = str_replace(DIRECTORY_SEPARATOR, '/', strtolower($checkPath));
 
-        return str_contains($normalized, '/config/production/')
-            || str_contains($normalized, '/config/prod/')
-            || str_contains($normalized, '/deploy/production/')
-            || str_contains($normalized, '/deploy/prod/')
-            || str_contains($normalized, '/environments/production/')
-            || str_contains($normalized, '/environments/prod/');
+        // Append trailing slash so patterns match both directories and paths within them
+        $withSlash = rtrim($normalized, '/') . '/';
+
+        return str_contains($withSlash, '/config/production/')
+            || str_contains($withSlash, '/config/prod/')
+            || str_contains($withSlash, '/deploy/production/')
+            || str_contains($withSlash, '/deploy/prod/')
+            || str_contains($withSlash, '/environments/production/')
+            || str_contains($withSlash, '/environments/prod/');
     }
 }
