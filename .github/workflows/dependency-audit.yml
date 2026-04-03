@@ -2,13 +2,11 @@ name: Dependency Audit
 
 on:
   pull_request:
-    paths:
-      - 'composer.json'
-      - 'composer.lock'
   push:
     branches: [master]
   schedule:
     - cron: '0 8 * * 1' # Weekly on Monday at 08:00 UTC
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -38,6 +36,23 @@ jobs:
       - name: Run composer audit (JSON for artifacts)
         if: always()
         run: composer audit --format=json > audit-results.json || true
+
+      - name: Audit summary
+        if: always()
+        run: |
+          echo "## Dependency Audit Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Composer" >> $GITHUB_STEP_SUMMARY
+          if [ -f audit-results.json ]; then
+            ADVISORIES=$(jq '.advisories | length' audit-results.json 2>/dev/null || echo "unknown")
+            echo "- Advisories found: **${ADVISORIES}**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Audit results not available" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Ecosystem Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "- [x] Composer (PHP)" >> $GITHUB_STEP_SUMMARY
+          echo "- [ ] npm/yarn — not applicable (no package.json)" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload audit results
         if: always()
