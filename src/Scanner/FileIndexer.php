@@ -22,7 +22,7 @@ class FileIndexer
         'php', 'ts', 'tsx', 'js', 'jsx', 'py', 'java',
         'cs', 'go', 'rb', 'swift', 'kt', 'scala',
         'vue', 'svelte', 'html',
-        'yaml', 'yml', 'json', 'toml', 'env',
+        'yaml', 'yml', 'json', 'toml', 'env', 'md',
     ];
 
     private const LOCK_FILES = [
