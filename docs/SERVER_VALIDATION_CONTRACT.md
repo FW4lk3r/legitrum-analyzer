@@ -128,6 +128,63 @@ This document describes the expected server-side behavior for each API endpoint 
 
 **Success response (200):** Triggers server-side AI evaluation pipeline.
 
+### GET /api/analyzer/results/{assessmentId}
+
+**Server validations:**
+| Check | Error Code | Response |
+|-------|-----------|----------|
+| Session is authenticated | 401 | `unauthenticated` |
+| Assessment exists | 404 | `assessment not found` |
+
+**Success response (200):**
+```json
+{
+  "status": "completed",
+  "assessment_id": 123,
+  "completed_at": "2026-04-07T14:30:00Z",
+  "results": {
+    "overall_score": 78,
+    "overall_status": "partially_compliant",
+    "criteria": [
+      {
+        "id": 45,
+        "title": "A06:2021 - Vulnerable Components",
+        "status": "compliant",
+        "score": 85,
+        "findings": ["Evidence of dependency scanning found in CI pipeline"],
+        "recommendations": ["Add SBOM generation to release process"]
+      }
+    ]
+  },
+  "metadata": {
+    "ai_model_version": "1.x",
+    "evaluation_duration_seconds": 30
+  }
+}
+```
+
+**Status values:** `processing` (AI still evaluating), `completed` (results ready), `failed` (pipeline error with `reason` field).
+
+**Client-side handling:**
+
+| Status | Action |
+|--------|--------|
+| `processing` | Continue polling with exponential backoff |
+| `completed` | Extract results, stop polling |
+| `failed` | Log reason, stop polling |
+
+**Error recovery:**
+
+| Scenario | Strategy |
+|----------|---------|
+| 401/403 | Stop polling, log error |
+| 404 | Treat as feature not available (backward compat), stop with warning |
+| 429 | Respect `Retry-After` header, double interval |
+| 5xx | Continue polling (server may be recovering) |
+| Connection failure | Continue polling until timeout |
+
+---
+
 ## Client-Side Response Handling
 
 The analyzer validates all server responses:
@@ -148,3 +205,4 @@ The analyzer validates all server responses:
 | reportSbomFiles | No retry | Warn + continue |
 | reportProgress | No retry | Silent + continue |
 | reportComplete | 3 attempts, 2s delay | Warn + exit normally |
+| getResults | Polling with 1.5x backoff, 5min timeout | Warn + partial report (exit 3) |

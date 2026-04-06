@@ -17,6 +17,13 @@ $appEnv = getenv('APP_ENV') ?: 'development';
 $isProduction = $appEnv === 'production';
 $logDestination = getenv('LOG_DESTINATION') ?: 'stderr';
 
+// Post-completion configuration
+$noWait = getenv('NO_WAIT') === '1';
+$resultTimeout = getenv('RESULT_TIMEOUT') ?: '300';
+$complianceThreshold = getenv('COMPLIANCE_THRESHOLD') ?: '100';
+$reportOutput = getenv('REPORT_OUTPUT') ?: null;
+$webhookUrl = getenv('WEBHOOK_URL') ?: null;
+
 // Validate log destination is accessible before initializing
 if ($logDestination !== 'stderr') {
     $logDir = dirname($logDestination);
@@ -58,6 +65,52 @@ if (strpos($realProjectPath, '/repo') !== 0) {
     die("ERROR: Project path must be within /repo, resolved to: {$realProjectPath}\n");
 }
 
-$analyzer = new Analyzer($token, $server, $assessmentId, $projectPath, $logLevel);
-$analyzer->run();
-exit(0);
+// Validate RESULT_TIMEOUT
+if (! ctype_digit((string) $resultTimeout) || (int) $resultTimeout < 0) {
+    die("ERROR: RESULT_TIMEOUT must be a non-negative integer, got: {$resultTimeout}\n");
+}
+$resultTimeout = (int) $resultTimeout;
+
+// Validate COMPLIANCE_THRESHOLD
+if (! ctype_digit((string) $complianceThreshold) || (int) $complianceThreshold < 0 || (int) $complianceThreshold > 100) {
+    die("ERROR: COMPLIANCE_THRESHOLD must be an integer between 0 and 100, got: {$complianceThreshold}\n");
+}
+$complianceThreshold = (int) $complianceThreshold;
+
+// Validate REPORT_OUTPUT path traversal
+if ($reportOutput !== null && $reportOutput !== '') {
+    $reportDir = dirname($reportOutput);
+    $realReportDir = realpath($reportDir);
+    $realCwd = realpath(getcwd());
+    $realTmp = realpath(sys_get_temp_dir());
+
+    if ($realReportDir === false) {
+        die("ERROR: REPORT_OUTPUT directory does not exist: {$reportDir}\n");
+    }
+    if (! is_writable($realReportDir)) {
+        die("ERROR: REPORT_OUTPUT directory is not writable: {$reportDir}\n");
+    }
+
+    $withinCwd = $realCwd !== false && strpos($realReportDir, $realCwd) === 0;
+    $withinTmp = $realTmp !== false && strpos($realReportDir, $realTmp) === 0;
+    if (! $withinCwd && ! $withinTmp) {
+        die("ERROR: REPORT_OUTPUT path must be within working directory or /tmp, resolved to: {$realReportDir}\n");
+    }
+} else {
+    $reportOutput = null;
+}
+
+$analyzer = new Analyzer(
+    $token,
+    $server,
+    $assessmentId,
+    $projectPath,
+    $logLevel,
+    $noWait,
+    $resultTimeout,
+    $complianceThreshold,
+    $reportOutput,
+    $webhookUrl,
+);
+$exitCode = $analyzer->run();
+exit($exitCode);
