@@ -5,6 +5,7 @@ namespace Legitrum\Analyzer\Auth;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Exception\ServerException;
 use InvalidArgumentException;
 use Legitrum\Analyzer\Logging\Logger;
 
@@ -270,6 +271,88 @@ class LegitruAuthClient
         }
     }
 
+    /**
+     * Poll the server for assessment results.
+     *
+     * Server validates: session is authenticated, assessment exists.
+     * Returns array with 'status' key: 'processing', 'completed', or 'failed'.
+     * On 404, returns null (endpoint not available — backward compatibility).
+     */
+    public function getResults(int $assessmentId): ?array
+    {
+        try {
+            $response = $this->client->get("/api/analyzer/results/{$assessmentId}");
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            if (! is_array($data)) {
+                $this->logger->warn('Results response is not valid JSON', [
+                    'assessment_id' => $assessmentId,
+                ]);
+
+                return null;
+            }
+
+            return $data;
+        } catch (ClientException $e) {
+            $status = $e->getResponse()->getStatusCode();
+
+            if ($status === 404) {
+                $this->logger->warn('Results endpoint not available (404) — server may not support this feature yet', [
+                    'event' => 'results_endpoint_not_found',
+                    'assessment_id' => $assessmentId,
+                ]);
+
+                return null;
+            }
+
+            if ($status === 429) {
+                $retryAfter = $e->getResponse()->getHeaderLine('Retry-After');
+                $this->logger->warn('Results endpoint rate limited', [
+                    'event' => 'results_rate_limited',
+                    'assessment_id' => $assessmentId,
+                    'retry_after' => $retryAfter,
+                ]);
+
+                return ['status' => 'processing', '_retry_after' => (int) $retryAfter ?: null];
+            }
+
+            if ($status === 401 || $status === 403) {
+                $this->logger->error('Results fetch auth rejected', [
+                    'event' => 'results_auth_rejected',
+                    'assessment_id' => $assessmentId,
+                    'http_status' => $status,
+                ]);
+
+                return ['status' => 'failed', 'reason' => 'authentication_error'];
+            }
+
+            $this->logger->warn('Results fetch failed', [
+                'event' => 'results_fetch_error',
+                'assessment_id' => $assessmentId,
+                'http_status' => $status,
+            ]);
+
+            return ['status' => 'processing'];
+        } catch (ServerException $e) {
+            $status = $e->getResponse()->getStatusCode();
+            $this->logger->warn('Results fetch failed', [
+                'event' => 'results_fetch_error',
+                'assessment_id' => $assessmentId,
+                'http_status' => $status,
+            ]);
+
+            return ['status' => 'processing'];
+        } catch (GuzzleException $e) {
+            $this->logger->warn('Results fetch connection failure', [
+                'event' => 'results_connection_error',
+                'assessment_id' => $assessmentId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['status' => 'processing'];
+        }
+    }
+
     public function reportComplete(int $assessmentId, array $summary): void
     {
         $maxRetries = 3;
@@ -342,7 +425,7 @@ class LegitruAuthClient
         return in_array($host, ['localhost', '127.0.0.1', 'host.docker.internal'], true);
     }
 
-    private function isAllowedServer(string $server): bool
+    public function isAllowedServer(string $server): bool
     {
         $normalized = rtrim($server, '/');
 
