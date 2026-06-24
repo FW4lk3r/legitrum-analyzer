@@ -22,7 +22,7 @@ class FileIndexer
         'php', 'ts', 'tsx', 'js', 'jsx', 'py', 'java',
         'cs', 'go', 'rb', 'swift', 'kt', 'scala',
         'vue', 'svelte', 'html',
-        'yaml', 'yml', 'json', 'toml', 'env', 'md',
+        'yaml', 'yml', 'json', 'toml', 'md',
     ];
 
     private const LOCK_FILES = [
@@ -72,13 +72,20 @@ class FileIndexer
                 continue;
             }
 
+            // Never index dotenv files (.env, .env.local, .env.example,
+            // .env.production, foo.env, ...). They routinely hold real secrets,
+            // and even ".example" templates can leak structure. Indexing them
+            // would let a server-supplied search pattern match an .env line and
+            // exfiltrate surrounding content, breaking the "source never leaves"
+            // guarantee.
+            if ($this->isDotenvFile($file->getFilename())) {
+                continue;
+            }
+
             // Check extension (handle blade.php)
             $ext = $file->getExtension();
             if (str_ends_with($file->getFilename(), '.blade.php')) {
                 $ext = 'blade.php';
-            }
-            if (str_ends_with($file->getFilename(), '.env.example')) {
-                $ext = 'env';
             }
 
             if (! in_array($ext, self::EXTENSIONS)) {
@@ -122,6 +129,17 @@ class FileIndexer
         }
 
         return $files;
+    }
+
+    /**
+     * Detect dotenv files by name so they are never indexed or read.
+     * Matches ".env", any ".env.*" variant, and "*.env".
+     */
+    private function isDotenvFile(string $filename): bool
+    {
+        return $filename === '.env'
+            || str_starts_with($filename, '.env.')
+            || str_ends_with($filename, '.env');
     }
 
     private function isProductionPath(string $path): bool

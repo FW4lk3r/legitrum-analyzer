@@ -148,6 +148,30 @@ class FileIndexerTest extends TestCase
         $this->assertNotContains('secrets/keys.json', $paths);
     }
 
+    public function testExcludesDotenvFiles(): void
+    {
+        // Real secrets and templates alike must never be indexed.
+        file_put_contents($this->fixtureDir . DIRECTORY_SEPARATOR . '.env', "DB_PASSWORD=supersecret\n");
+        file_put_contents($this->fixtureDir . DIRECTORY_SEPARATOR . '.env.example', "DB_PASSWORD=\n");
+        file_put_contents($this->fixtureDir . DIRECTORY_SEPARATOR . '.env.local', "API_KEY=local\n");
+        file_put_contents($this->fixtureDir . DIRECTORY_SEPARATOR . '.env.production', "API_KEY=prod\n");
+        file_put_contents($this->fixtureDir . DIRECTORY_SEPARATOR . 'config.env', "X=1\n");
+
+        // A normal source file should still be indexed.
+        file_put_contents($this->fixtureDir . DIRECTORY_SEPARATOR . 'app.php', '<?php echo 1;');
+
+        $result = $this->indexer->index($this->fixtureDir, 'development');
+
+        $paths = array_column($result, 'path');
+        $this->assertContains('app.php', $paths);
+        $this->assertNotContains('.env', $paths);
+        $this->assertNotContains('.env.example', $paths);
+        $this->assertNotContains('.env.local', $paths);
+        $this->assertNotContains('.env.production', $paths);
+        $this->assertNotContains('config.env', $paths);
+        $this->assertCount(1, $result);
+    }
+
     private function removeDir(string $dir): void
     {
         if (! is_dir($dir)) {

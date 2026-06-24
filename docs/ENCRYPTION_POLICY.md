@@ -48,7 +48,7 @@ Custom cipher pinning is not implemented because:
 
 To add a new server or relax encryption for a connection:
 
-1. Add the URL pattern to `ALLOWED_SERVERS` in `LegitruAuthClient.php`
+1. Add the hostname to `ALLOWED_HOSTS` (exact) or `ALLOWED_HOST_SUFFIXES` (subdomains) in `LegitruAuthClient.php`. The allowlist matches on the parsed URL host only — never add raw URL patterns.
 2. Document the justification in this file
 3. If HTTP (not HTTPS), it must be a local address — non-local HTTP is logged as a warning
 4. Add a test in `tests/Security/EncryptionComplianceTest.php`

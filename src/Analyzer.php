@@ -224,6 +224,16 @@ class Analyzer
         $this->log("Ver resultados em: {$this->server}/assessments/{$this->assessmentId}");
     }
 
+    /**
+     * Whether any evidence/completion report failed to reach the server after
+     * all retries. The CLI entrypoint uses this to exit non-zero so that an
+     * orchestrator does not treat a partially-delivered run as successful.
+     */
+    public function hadDeliveryFailures(): bool
+    {
+        return $this->auth->getDeliveryFailureCount() > 0;
+    }
+
     private function log(string $message, array $context = []): void
     {
         $this->logger->info($message, $context);

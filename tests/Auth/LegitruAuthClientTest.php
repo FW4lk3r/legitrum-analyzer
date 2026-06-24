@@ -48,6 +48,55 @@ class LegitruAuthClientTest extends TestCase
         new LegitruAuthClient('test-token', 'https://malicious.com');
     }
 
+    public function testAcceptsDefaultServer(): void
+    {
+        // The documented default LEGITRUM_SERVER must pass the allowlist,
+        // otherwise the tool throws on startup with out-of-the-box config.
+        $client = new LegitruAuthClient('test-token', 'https://legitrum.com');
+        $this->assertInstanceOf(LegitruAuthClient::class, $client);
+    }
+
+    public function testAcceptsLegitrumPtApex(): void
+    {
+        $client = new LegitruAuthClient('test-token', 'https://legitrum.pt');
+        $this->assertInstanceOf(LegitruAuthClient::class, $client);
+    }
+
+    /**
+     * Regression: the previous fnmatch()-on-full-URL allowlist let '*' cross
+     * '/', so a path segment that looked like an allowed host smuggled the URL
+     * past validation and leaked the bearer token to the attacker host.
+     */
+    public function testRejectsAttackerPathBypass(): void
+    {
+        $bypassUrls = [
+            'https://attacker.com/.legitrum.pt',
+            'https://attacker.com/app.legitrum.pt',
+            'https://attacker.com/?x=.legitrum.internal',
+            'https://attacker.com#.legitrum.pt',
+            'https://attacker.com/localhost',
+        ];
+
+        foreach ($bypassUrls as $url) {
+            try {
+                new LegitruAuthClient('test-token', $url);
+                $this->fail("Allowlist bypass should have been rejected: {$url}");
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString('not in allowlist', $e->getMessage());
+            }
+        }
+    }
+
+    public function testRejectsCredentialSmuggling(): void
+    {
+        // Userinfo points the authority at an allowlisted host but is an
+        // authority-confusion vector and must be rejected.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('not in allowlist');
+
+        new LegitruAuthClient('test-token', 'https://evil.com@localhost/');
+    }
+
     public function testRejectsJavascriptScheme(): void
     {
         $this->expectException(InvalidArgumentException::class);
@@ -145,6 +194,26 @@ class LegitruAuthClientTest extends TestCase
         }
 
         $this->fail('Expected RuntimeException was not thrown');
+    }
+
+    // --- Fail-loud delivery tracking ---
+
+    public function testFailedEvidenceDeliveryIsCounted(): void
+    {
+        // Unreachable (connection-refused) server: all retries exhaust and the
+        // failure must be recorded so the run can exit non-zero.
+        $client = new LegitruAuthClient('token', 'http://127.0.0.1:19999');
+
+        $this->assertSame(0, $client->getDeliveryFailureCount());
+
+        $result = $client->reportEvidence(1, 1, [
+            'snippets' => [],
+            'files_searched' => 0,
+            'files_relevant' => 0,
+        ]);
+
+        $this->assertSame([], $result);
+        $this->assertSame(1, $client->getDeliveryFailureCount());
     }
 
     public function testTokenNotExposedInErrorMessages(): void
