@@ -30,24 +30,36 @@ class LegitruAuthClient
      * Production: migrate this to an externally-managed config store
      * (e.g., HashiCorp Vault) with read-only application access.
      */
-    private const ALLOWED_SERVERS = [
-        'https://localhost',
-        'https://localhost:*',
-        'http://localhost',
-        'http://localhost:*',
-        'https://127.0.0.1',
-        'https://127.0.0.1:*',
-        'http://127.0.0.1',
-        'http://127.0.0.1:*',
-        'http://host.docker.internal',
-        'http://host.docker.internal:*',
-        'https://host.docker.internal',
-        'https://host.docker.internal:*',
-        'https://*.legitrum.pt',
-        'https://*.legitrum.internal',
+    /**
+     * Exact hostnames that are allowed regardless of port.
+     */
+    private const ALLOWED_HOSTS = [
+        'localhost',
+        '127.0.0.1',
+        'host.docker.internal',
+        'legitrum.com',
+        'legitrum.pt',
+    ];
+
+    /**
+     * Allowed host suffixes (subdomains). A host is allowed when it ends with
+     * one of these (e.g. "app.legitrum.pt" matches ".legitrum.pt"). The leading
+     * dot is required so "legitrum.pt.attacker.com" does NOT match.
+     */
+    private const ALLOWED_HOST_SUFFIXES = [
+        '.legitrum.com',
+        '.legitrum.pt',
+        '.legitrum.internal',
     ];
 
     private Client $client;
+
+    /**
+     * Number of report deliveries that exhausted all retries. A non-zero value
+     * means evidence/completion did not reach the server, so the overall run
+     * must be treated as failed by the caller (non-zero process exit).
+     */
+    private int $deliveryFailures = 0;
 
     private Logger $logger;
 
@@ -213,6 +225,7 @@ class LegitruAuthClient
                 }
                 $attempt++;
                 if ($attempt >= $maxRetries) {
+                    $this->deliveryFailures++;
                     $this->logger->warn('Failed to send evidence chunk', [
                         'criterion_id' => $criterionId,
                         'chunk' => $chunkIndex,
@@ -225,6 +238,7 @@ class LegitruAuthClient
             } catch (\Exception $e) {
                 $attempt++;
                 if ($attempt >= $maxRetries) {
+                    $this->deliveryFailures++;
                     $this->logger->warn('Failed to send evidence chunk', [
                         'criterion_id' => $criterionId,
                         'chunk' => $chunkIndex,
@@ -236,6 +250,7 @@ class LegitruAuthClient
                 sleep(2 * $attempt);
             }
         }
+        $this->deliveryFailures++;
         return [];
     }
 
@@ -287,6 +302,7 @@ class LegitruAuthClient
             } catch (\Exception $e) {
                 $attempt++;
                 if ($attempt >= $maxRetries) {
+                    $this->deliveryFailures++;
                     $this->logger->warn('Failed to report completion', [
                         'assessment_id' => $assessmentId,
                         'attempts' => $maxRetries,
@@ -342,17 +358,53 @@ class LegitruAuthClient
         return in_array($host, ['localhost', '127.0.0.1', 'host.docker.internal'], true);
     }
 
+    /**
+     * Validate the server against the host allowlist.
+     *
+     * The comparison is performed on the parsed host only — never on the raw
+     * URL string. A previous implementation fnmatch()'d the whole URL, where
+     * the '*' wildcard crosses '/' under the default flags, so an attacker URL
+     * such as "https://attacker.com/.legitrum.pt" matched "https://*.legitrum.pt"
+     * and the bearer token was leaked to attacker.com. Matching on the host
+     * with exact/suffix comparison removes that bypass entirely.
+     */
     private function isAllowedServer(string $server): bool
     {
-        $normalized = rtrim($server, '/');
+        $parsed = parse_url($server);
+        if ($parsed === false || ! isset($parsed['host']) || $parsed['host'] === '') {
+            return false;
+        }
 
-        foreach (self::ALLOWED_SERVERS as $allowed) {
-            if (fnmatch($allowed, $normalized)) {
+        // Reject embedded credentials (e.g. "https://evil.com@localhost/").
+        // The authority would route to the allowlisted host but the userinfo
+        // is an authority-confusion vector and never appears in a legitimate URL.
+        if (isset($parsed['user']) || isset($parsed['pass'])) {
+            return false;
+        }
+
+        $host = strtolower($parsed['host']);
+
+        if (in_array($host, self::ALLOWED_HOSTS, true)) {
+            return true;
+        }
+
+        foreach (self::ALLOWED_HOST_SUFFIXES as $suffix) {
+            if (str_ends_with($host, $suffix)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Number of report deliveries (evidence/completion) that failed after all
+     * retries. Callers should exit non-zero when this is greater than zero so
+     * that an orchestrator sees the run as failed rather than silently green.
+     */
+    public function getDeliveryFailureCount(): int
+    {
+        return $this->deliveryFailures;
     }
 
     private function extractFailureReason(int $status, string $body): string

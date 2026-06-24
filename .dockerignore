@@ -1,0 +1,20 @@
+# Secrets — never bake these into image layers.
+# Note: secrets/config.php is intentionally NOT excluded; it is the loader code
+# (it only reads env vars at runtime) and run.php requires it. The real secret
+# values live in .env.secrets / .env*, which are excluded below.
+.env
+.env.*
+.env.secrets
+
+# VCS and CI
+.git/
+.github/
+
+# Dependencies / build artifacts (reinstalled inside the image)
+vendor/
+composer.phar
+
+# Tooling / local cruft
+.claude/
+.phpunit.result.cache
+tests/

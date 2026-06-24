@@ -60,4 +60,12 @@ if (strpos($realProjectPath, '/repo') !== 0) {
 
 $analyzer = new Analyzer($token, $server, $assessmentId, $projectPath, $logLevel);
 $analyzer->run();
+
+// Fail loud: if any evidence/completion report could not be delivered after
+// retries, exit non-zero so an orchestrator sees the run as failed.
+if ($analyzer->hadDeliveryFailures()) {
+    fwrite(STDERR, "ERROR: One or more reports failed to reach the server. See logs above.\n");
+    exit(1);
+}
+
 exit(0);
